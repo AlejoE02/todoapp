@@ -1,33 +1,65 @@
-import {Component, signal} from '@angular/core';
+import {Component, computed, effect, inject, Injector, signal} from '@angular/core';
 import {CommonModule} from '@angular/common';
 import { Task } from '../../models/task.model';
+import { FormControl, ReactiveFormsModule, Validators } from "@angular/forms";
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, ReactiveFormsModule],
   templateUrl: './home.component.html',
   styleUrl: './home.component.css'
 })
 export class HomeComponent {
-  tasks = signal<Task[]>([
-    {
-      id: Date.now(),
-      title: 'Make a project',
-      completed: true
-    },
-    {
-      id: Date.now(),
-      title: 'Make Components',
-      completed: false
+  tasks = signal<Task[]>([]);
+
+  filter = signal('all');
+  taskByFilter = computed(() => {
+    const filter = this.filter();
+    const tasks = this.tasks();
+    if (filter === 'pending'){
+      return tasks.filter(task => !task.completed)
     }
-  ]);
+    if (filter === 'completed'){
+      return tasks.filter(task => task.completed)
+    }
+    return tasks;
 
-  changeHandler(event: Event) {
+  })
 
-    const input: HTMLInputElement = event.target as HTMLInputElement;
-    const newTask: string = input.value;
-    this.addTask(newTask);
+  newTaskCtrl = new FormControl('',{
+    nonNullable:true,
+    validators: [
+      Validators.required
+    ]
+  });
+
+  injector = inject(Injector)
+
+  ngOnInit(){
+    const storage = localStorage.getItem('tasks');
+    if(storage){
+      const task = JSON.parse(storage);
+      this.tasks.set(task);
+    }
+    this.trackTask();
+  }
+
+  trackTask(){
+    effect(() => {
+      const task = this.tasks();
+      localStorage.setItem('tasks', JSON.stringify(task));
+    }, {injector: this.injector})
+  }
+
+  changeHandler() {
+    if(this.newTaskCtrl.valid){
+      const value = this.newTaskCtrl.value.trim();
+      if(value !== ''){
+        this.addTask(value);
+        this.newTaskCtrl.setValue('');
+      }
+    }
   }
 
   addTask(title: string){
@@ -54,5 +86,41 @@ export class HomeComponent {
         return task;
       })
     })
+  }
+
+  updateTaskEditingMode(index: number){
+    this.tasks.update((tasks) => {
+      return tasks.map((task, position) => {
+        if(position === index){
+          return {
+            ...task,
+            editing: true
+          }
+        }
+        return {
+          ...task,
+          editing: false
+        };
+      })
+    })
+  }
+  updateTaskTitle(index: number, event: Event){
+    const input = event.target as HTMLInputElement;
+    this.tasks.update((tasks) => {
+      return tasks.map((task, position) => {
+        if(position === index){
+          return {
+            ...task,
+            title: input.value,
+            editing: false
+          }
+        }
+        return task;
+      })
+    })
+  }
+
+  changeFilter(filter: string){
+    this.filter.set(filter);
   }
 }
